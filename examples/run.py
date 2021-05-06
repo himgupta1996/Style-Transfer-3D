@@ -5,16 +5,19 @@ import argparse
 import glob
 import os
 import subprocess
+import torch
+import cv2
 
-import chainer
-import cupy as cp
+#import chainer
+#import cupy as cp
 import neural_renderer
 import numpy as np
-import scipy.misc
-import scipy.ndimage
+#import scipy.misc
+#import scipy.ndimage
 import tqdm
 
 import style_transfer_3d
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def make_gif(working_directory, filename):
@@ -55,8 +58,8 @@ def run():
         os.makedirs(directory_output)
 
     # setup chainer
-    chainer.cuda.get_device_from_id(args.gpu).use()
-    cp.random.seed(0)
+    # chainer.cuda.get_device_from_id(args.gpu).use()
+    # cp.random.seed(0)
     np.random.seed(0)
 
     # setup scene
@@ -75,16 +78,19 @@ def run():
         texture_size=args.texture_size,
     )
     model.to_gpu()
-    optimizer = neural_renderer.Adam(alpha=args.adam_lr, beta1=args.adam_beta1)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.adam_lr,
+                                 weight_decay=args.adam_beta1)
+    #optimizer = neural_renderer.Adam(alpha=args.adam_lr, beta1=args.adam_beta1)
     optimizer.setup(model)
 
     # optimization
     loop = tqdm.tqdm(range(args.num_iteration))
     for _ in loop:
-        optimizer.target.cleargrads()
+        optimizer.zero_grad()
+        #optimizer.target.cleargrads()
         loss = model(args.batch_size)
         loss.backward()
-        optimizer.update()
+        optimizer.step()
         loop.set_description('Optimizing. Loss %.4f' % loss.data)
 
     # draw object
@@ -95,7 +101,8 @@ def run():
         model.renderer.eye = neural_renderer.get_points_from_angles(2.732, 30, azimuth)
         images = model.renderer.render(*model.mesh.get_batch(1))
         image = images.data.get()[0].transpose((1, 2, 0))
-        scipy.misc.toimage(image, cmin=0, cmax=1).save('%s/_tmp_%04d.png' % (directory_output, num))
+        #scipy.misc.toimage(image, cmin=0, cmax=1).save('%s/_tmp_%04d.png' % (directory_output, num))
+        cv2.imwrite('%s/_tmp_%04d.png' % (directory_output, num), image)
     make_gif(directory_output, args.filename_output)
 
 
